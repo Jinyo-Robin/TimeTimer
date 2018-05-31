@@ -1,30 +1,76 @@
 // html references
+
 let optionsButton = document.querySelector('#optionsButton');
 let addClockButton = document.querySelector('#addClockButton');
 let silenceButton = document.querySelector('#silenceButton');
 
+// globals
+
 let maxFps = 60;
-let scaleMinutes = 60;
-let newStarttime = 0;
+let maxMinutes = 60;
+let newRemainingMinutes = 0;
 
-function calc() {
-    if (startTime <= Date.now()) {
-        alert('Done!');
-        return;
-    }
-    draw();
-};
+// functions
 
-function draw(timer, time) {
-    drawTime(timer, time);
-};
-
-function drawTimerdigits() {
-    let canvas = timer.querySelector('.analogTimer');
-    let ctx = canvas.getContext("2d");
+function setStartTime(timer, remainingMinutes) { // will be called to set default time or prepare startTime
+    timer.setAttribute('remainingMinutes', remainingMinutes);
 }
 
-function drawTime(timer, time) {
+function setEndTime(timer, targetTime) {
+    if (!timer.getAttribute('targetTime')) {
+        return;
+    }
+    timer.setAttribute('targetTime', targetTime)
+}
+
+function startTimer(timer) {
+    let remainingMinutes = timer.getAttribute('remainingMinutes');
+    if (!remainingMinutes) {
+        return;
+    };
+    timer.setAttribute('targetTime', remainingMinutes * 60 * 1000 + Date.now());
+    timer.removeAttribute('remainingMinutes');
+
+    let timerID = timer.getAttribute('timerID');
+    if (!timerID) {
+        // TODO: stop all other timers now
+        timer.setAttribute('timerID', setInterval(
+            ((timer) => {
+                return () => {
+                    if (!newRemainingMinutes) {
+                        let targetTime = timer.getAttribute('targetTime');
+                        let remainingMinutes;
+                        if (targetTime < Date.now()) {
+                            alert('Done!');
+                            stopTimer(timer);
+                            remainingMinutes = 0;
+                        } else {
+                            remainingMinutes = (targetTime - Date.now()) / 60 / 1000;
+                        }
+                        drawTime(timer, remainingMinutes, maxMinutes);
+                    }
+                }
+            })(timer),
+            200
+        ));
+    }
+}
+
+function stopTimer(timer) { // timer will be stoped externaly when another timer starts running
+    let timerID = timer.getAttribute('timerID');
+    if (!timerID) {
+        return;
+    }
+    clearInterval(timerID);
+    timer.removeAttribute('timerID');
+
+    let targetTime = timer.getAttribute('targetTime');
+    timer.removeAttribute('targetTime');
+    timer.setAttribute('remainingMinutes', targetTime - Date.now());
+}
+
+function drawTime(timer, remainingMinutes /*Double*/, maxMinutes /* Integer */) {
+    maxMinutes = maxMinutes || 60;
     let canvas = timer.querySelector('.analogTimer');
     let ctx = canvas.getContext("2d");
 
@@ -36,7 +82,7 @@ function drawTime(timer, time) {
 
     ctx.fillStyle = 'red';
     ctx.beginPath();
-    ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2.5, ((60-time)/60 -0.25) *2*Math.PI, 1.5*Math.PI);
+    ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2.5, ((maxMinutes-remainingMinutes)/maxMinutes -0.25) *2*Math.PI, 1.5*Math.PI);
     ctx.lineTo(canvas.width/2, canvas.height/2);
     ctx.closePath();
     ctx.fill();
@@ -47,47 +93,80 @@ function drawTime(timer, time) {
     ctx.closePath();
     ctx.fill();
 
+    let minutes = Math.floor(remainingMinutes);
+    let seconds = Math.ceil((remainingMinutes - minutes)*60);
     ctx.fillStyle = 'white';
+    ctx.textAlign="center";
     ctx.font = "30px Arial";
-    ctx.textBaseline="middle";
-    ctx.textAlign="center"; 
-    ctx.fillText(Math.ceil(time), canvas.width/2, canvas.height/2);
+    ctx.textBaseline="bottom";
+    ctx.fillText(("0" + minutes).slice(-2), canvas.width/2, canvas.height/2);
+    ctx.textBaseline="top";
+    ctx.fillText(("0" + seconds).slice(-2), canvas.width/2, canvas.height/2);
 }
+
+function drawTimerdigits(timer, maxMinutes) { // will be called once, when a new timer is created or resized
+    maxMinutes = maxMinutes || 60;
+    let canvas = timer.querySelector('.analogTimer');
+    let ctx = canvas.getContext("2d");
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'white';
+    ctx.textBaseline="middle";
+    ctx.textAlign="center";
+    ctx.font = "30px Arial";
+    ctx.fillText(0, canvas.width/2, canvas.height/2);
+
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    for (let i=0; i<12; i++) {
+        if (!(i%3)) {
+            ctx.font = "20px Arial";
+            ctx.fillStyle = 'white';
+        } else {
+            ctx.font = "15px Arial";
+            ctx.fillStyle = 'grey';
+        }
+        ctx.fillText(Math.round(maxMinutes*(1-i/12)*100)/100, canvas.width/2 * (1+0.9*Math.cos((i/6-0.5)*Math.PI)), canvas.height/2 * (1+0.9*Math.sin((i/6-0.5)*Math.PI)));
+    }
+}
+
+// events
 
 document.addEventListener('mousedown', (event) => {
     if (event.target.className == 'analogTimer' && event.buttons == 1) {
-        newStarttime = getTimeFromPosition(event.offsetX, event.offsetY, event.target.width, event.target.height, 60);
-        this.debug.innerText = 'new start time: ' + newStarttime;
-        draw(event.target.parentElement, newStarttime);
+        newRemainingMinutes = getMinutesFromPosition(event.offsetX, event.offsetY, event.target.width, event.target.height, maxMinutes);
+        // this.debug.innerText = 'new start time: ' + newRemainingMinutes;
+        drawTime(event.target.parentElement, newRemainingMinutes, maxMinutes);
     }
 }, false);
 
 document.addEventListener('mousemove', (event) => {
     if (event.target.className == 'analogTimer' && event.buttons == 1) {
-        newStarttime = getTimeFromPosition(event.offsetX, event.offsetY, event.target.width, event.target.height, 60);
-        this.debug.innerText = 'new start time: ' + newStarttime;
-        draw(event.target.parentElement, newStarttime);
+        newRemainingMinutes = getMinutesFromPosition(event.offsetX, event.offsetY, event.target.width, event.target.height, maxMinutes);
+        // this.debug.innerText = 'new start time: ' + newRemainingMinutes;
+        drawTime(event.target.parentElement, newRemainingMinutes, maxMinutes);
     }
 }, false);
 
 document.addEventListener('mouseup', (event) => {
-    if (event.target.className == 'analogTimer') {
-        updateTime(event.target.parentElement, newStarttime);
+    if (event.target.className == 'analogTimer' && newRemainingMinutes > 0) {
+        setStartTime(event.target.parentElement, newRemainingMinutes);
         startTimer(event.target.parentElement);
     }
+    newRemainingMinutes = 0;
 }, false);
 
-function updateTime(timer, time) {
-    timer.setAttribute('time', time);
-}
+window.onload = () => {
+    console.log('hello!');
+    document.querySelectorAll('.analogTimer').forEach((element)=>{
+        drawTimerdigits(element.parentElement, maxMinutes);
+    });
+};
 
-function startTimer(timer) {
-    console.log(timer.childElements);
-    // timer.querySelector('.digitalTimer').innerText = Math.ceil(timer.getAttribute('time'));
-    // let lastStart = Date.now();
-    // calc();
-}
+// utils
 
-function getTimeFromPosition(x, y, width, height, scale) {
-    return (Math.atan2(x - width/2, y - height/2) * (180 / Math.PI) + 180) / (360 / scale);
+function getMinutesFromPosition(x, y, width, height, maxMinutes) {
+    maxMinutes = maxMinutes || 60;
+    return (Math.atan2(x - width/2, y - height/2) * (180 / Math.PI) + 180) / (360 / maxMinutes);
 }

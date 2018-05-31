@@ -26,15 +26,6 @@ body {
     justify-content: center;
 }
 
-.analogTimer {
-    border: 1px solid red;
-}
-
-.digitalTimer {
-    color: white;
-    position: absolute;
-}
-
 #menu {
     height: 40px;
     width: 100%;
